@@ -1,0 +1,68 @@
+{
+  __default__":
+  {
+    "job-name": "G4RBPevo.{rule}",
+    "mem": "8G",
+    "time": "0-3:00:00",
+    "mail-user": "anais.vannutelli@usherbrooke.ca",
+    "mail-type": "FAIL"
+  },
+  "download_bam":
+  {
+    "job-name": "G4RBPevo.download_bam",
+    "mem": "4G",
+    "time": "0-01:00:00",
+  },
+  "convertBam2Bed":
+  {
+    "job-name": "G4RBPevo.convertBam2Bed",
+    "mem": "4G",
+    "time": "0-01:00:00",
+  },
+  "getOverlapingReadsRep12":
+  {
+    "job-name": "G4RBPevo.getOverlapingReadsRep12",
+    "mem": "8G",
+    "time": "0-01:00:00",
+  },
+  "sortBed":
+  {
+    "job-name": "G4RBPevo.sortBed",
+    "mem-per-cpu": "8G",
+    "ntasks-per-node": "16",
+    "time": "0-01:00:00",
+  },
+  "mergeOverlapingReads":
+  {
+    "job-name": "G4RBPevo.mergeOverlapingReads",
+    "mem": "4G",
+    "time": "0-01:00:00",
+  },
+  "removeInput":
+  {
+    "job-name": "G4RBPevo.removeInput",
+    "mem-per-cpu": "8G",
+    "time": "0-01:00:00",
+  },
+  "getBindedTranscripts":
+  {
+    "job-name": "G4RBPevo.getBindedTranscripts",
+    "mem-per-cpu": "8G",
+    "ntasks-per-node": "4",
+    "time": "0-01:00:00",
+  },
+  "getG4OnBindedTranscripts":
+  {
+    "job-name": "G4RBPevo.getG4OnBindedTranscripts",
+    "mem-per-cpu": "8G",
+    "ntasks-per-node": "4",
+    "time": "0-01:00:00",
+  },
+  "getG4BindedByRBP":
+  {
+    "job-name": "G4RBPevo.getG4BindedByRBP",
+    "mem-per-cpu": "8G",
+    "ntasks-per-node": "4",
+    "time": "0-01:00:00",
+  }
+}

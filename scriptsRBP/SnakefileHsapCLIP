@@ -1,0 +1,167 @@
+configfile: "config.json"
+
+rule all:
+    input:
+        expand("data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_BS_bindingG4.bed", prot = config["RBPHepG2"], repro = config["Repro"])
+        # expand("data/eCLIP/{prot}/G4_binded_HepG2.bed", prot = config["RBPHepG2"])
+
+rule download_bam:
+    output:
+        rep1 = "data/eCLIP/{prot}/Repro1-HepG2.bam",
+        rep2 = "data/eCLIP/{prot}/Repro2-HepG2.bam",
+        ctr = "data/eCLIP/{prot}/CtrHepG2.bam"
+    params:
+        eCLIP = lambda wildcards: config["BamHepG2eCLIP"][wildcards.prot],
+        Ctrl = lambda wildcards: config["BamHepG2Ctr"][wildcards.prot]
+    shell:
+        "mkdir -p data/eCLIP/{wildcards.prot}/ &&\
+        wget -O {output.ctr} https://www.encodeproject.org/files/{params.Ctrl}/@@download/{params.Ctrl}.bam &&\
+        wget -O {output.rep1} https://www.encodeproject.org/files/{params.eCLIP[0]}/@@download/{params.eCLIP[0]}.bam &&\
+        wget -O {output.rep2} https://www.encodeproject.org/files/{params.eCLIP[1]}/@@download/{params.eCLIP[1]}.bam"
+
+rule convertBam2Bed:
+    output:
+        rep1out = "data/eCLIP/{prot}/Repro1-HepG2.bam.bed",
+        rep2out = "data/eCLIP/{prot}/Repro2-HepG2.bam.bed",
+        ctrout = "data/eCLIP/{prot}/CtrHepG2.bam.bed"
+    input:
+        rep1 = "data/eCLIP/{prot}/Repro1-HepG2.bam",
+        rep2 = "data/eCLIP/{prot}/Repro2-HepG2.bam",
+        ctr = "data/eCLIP/{prot}/CtrHepG2.bam"
+    conda:
+    	"envs/bedtools.yaml"
+    shell:
+        "bedtools bamtobed -i {input.rep1} > {output.rep1out} &&\
+        bedtools bamtobed -i {input.rep2} > {output.rep2out} &&\
+        bedtools bamtobed -i {input.ctr} > {output.ctrout}"
+
+rule splitStrand:
+    output:
+        rep1For = "data/eCLIP/{prot}/Repro1_Forward-HepG2.bam.bed",
+        rep2For = "data/eCLIP/{prot}/Repro2_Forward-HepG2.bam.bed",
+        ctrFor = "data/eCLIP/{prot}/CtrHepG2_Forward.bam.bed",
+        rep1Rev = "data/eCLIP/{prot}/Repro1_Reverse-HepG2.bam.bed",
+        rep2Rev = "data/eCLIP/{prot}/Repro2_Reverse-HepG2.bam.bed",
+        ctrRev = "data/eCLIP/{prot}/CtrHepG2_Reverse.bam.bed"
+    input:
+        rep1 = "data/eCLIP/{prot}/Repro1-HepG2.bam.bed",
+        rep2 = "data/eCLIP/{prot}/Repro2-HepG2.bam.bed",
+        ctr = "data/eCLIP/{prot}/CtrHepG2.bam.bed"
+    shell:
+        """cat {input.ctr} | grep '+' > {output.ctrFor} &&\
+            cat {input.ctr} | awk '$6 == "-"' > {output.ctrRev} &&\
+            cat {input.rep1} | grep '+' > {output.rep1For} &&\
+            cat {input.rep1} | awk '$6 == "-"' > {output.rep1Rev} &&\
+            cat {input.rep2} | grep '+' > {output.rep2For} &&\
+            cat {input.rep2} | awk '$6 == "-"' > {output.rep2Rev}"""
+
+rule MACS:
+    output:
+        forw = "data/eCLIP/{prot}/MACS_HepG2_forward_summits.bed",
+        rev = "data/eCLIP/{prot}/MACS_HepG2_reverse_summits.bed"
+    input:
+        rep1For = "data/eCLIP/{prot}/Repro1_Forward-HepG2.bam.bed",
+        rep2For = "data/eCLIP/{prot}/Repro2_Forward-HepG2.bam.bed",
+        ctrFor = "data/eCLIP/{prot}/CtrHepG2_Forward.bam.bed",
+        rep1Rev = "data/eCLIP/{prot}/Repro1_Reverse-HepG2.bam.bed",
+        rep2Rev = "data/eCLIP/{prot}/Repro2_Reverse-HepG2.bam.bed",
+        ctrRev = "data/eCLIP/{prot}/CtrHepG2_Reverse.bam.bed"
+    shell:
+        """source /home/vana2406/software/vP3macs3/bin/activate
+            macs3 callpeak -t {input.rep1For} {input.rep2For} -c {input.ctrFor} -f BED -g hs -n data/eCLIP/{wildcards.prot}/MACS_HepG2_forward --nomodel --extsize 147 &&\
+            macs3 callpeak -t {input.rep1Rev} {input.rep2Rev} -c {input.ctrRev} -f BED -g hs -n data/eCLIP/{wildcards.prot}/MACS_HepG2_reverse --nomodel --extsize 147"""
+
+rule sortBed:
+    output:
+        forw = "data/eCLIP/{prot}/forward_HepG2.sorted.bed",
+        rev = "data/eCLIP/{prot}/reverse_HepG2.sorted.bed"
+    input:
+        forw = "data/eCLIP/{prot}/MACS_HepG2_forward_summits.bed",
+        rev = "data/eCLIP/{prot}/MACS_HepG2_reverse_summits.bed"
+    shell:
+        "sort -u --parallel=4 {input.forw}> {input.forw}.tmp &&\
+        sort -k1,1 -k2,2n --parallel=4 {input.forw}.tmp > {output.forw} &&\
+        sort -u --parallel=4 {input.rev}> {input.rev}.tmp &&\
+        sort -k1,1 -k2,2n --parallel=4 {input.rev}.tmp > {output.rev}"
+
+rule getBindedTranscripts:
+    output:
+        forw = "data/eCLIP/{prot}/forward_HepG2_transcriptBinded.bed",
+        rev = "data/eCLIP/{prot}/reverse_HepG2_transcriptBinded.bed"
+    input:
+        forw = "data/eCLIP/{prot}/forward_HepG2.sorted.bed",
+        rev = "data/eCLIP/{prot}/reverse_HepG2.sorted.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """bedtools window -a tmpHsap.gtf.bed -b {input.forw} -w 0 | grep '+' | cut -f 1,2,3,6 | awk ' {{ ;print; }} ' OFS=$'\t' > {output.forw}.tmp &&\
+        sort -u --parallel=4 {output.forw}.tmp > {output.forw}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.forw}.tmp1 > {output.forw} &&\
+        rm {output.forw}.tmp1 {output.forw}.tmp &&\
+        bedtools window -a tmpHsap.gtf.bed -b {input.rev} -w 0 | grep '-' | cut -f 1,2,3,6 | awk ' {{ ;print; }} ' OFS=$'\t' > {output.rev}.tmp &&\
+        sort -u --parallel=4 {output.rev}.tmp > {output.rev}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.rev}.tmp1 > {output.rev} &&\
+        rm {output.rev}.tmp1 {output.rev}.tmp"""
+
+rule getG4OnBindedTranscripts:
+    output:
+        forw = "data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_G4_transcriptBinded.bed",
+        rev = "data/eCLIP/{prot}/Repro_{repro}_reverse_HepG2_G4_transcriptBinded.bed"
+    input:
+        forw = "data/eCLIP/{prot}/forward_HepG2_transcriptBinded.bed",
+        rev = "data/eCLIP/{prot}/reverse_HepG2_transcriptBinded.bed",
+        pG4 = "data/Random/Hsap_pG4coord_{repro}.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """bedtools window -a {input.pG4} -b {input.forw} -w 0 | cut -f 1,2,3 | awk ' {{ ;print; }} ' OFS=$'\t' > {output.forw}.tmp  &&\
+        sort -u --parallel=4 {output.forw}.tmp > {output.forw}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.forw}.tmp1 > {output.forw} &&\
+        bedtools window -a {input.pG4} -b {input.rev} -w 0 | cut -f 1,2,3 | awk ' {{ ;print; }} ' OFS=$'\t' > {output.rev}.tmp  &&\
+        sort -u --parallel=4 {output.rev}.tmp > {output.rev}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.rev}.tmp1 > {output.rev} &&\
+        rm {output.rev}.tmp1 {output.rev}.tmp {output.forw}.tmp1 {output.forw}.tmp"""
+
+rule getG4BindedByRBP:
+    output:
+        forw = "data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_G4_binded.bed",
+        rev = "data/eCLIP/{prot}/Repro_{repro}_reverse_HepG2_G4_binded.bed"
+    input:
+        protForw = "data/eCLIP/{prot}/forward_HepG2.sorted.bed",
+        protRev = "data/eCLIP/{prot}/reverse_HepG2.sorted.bed",
+        pG4Forw = "data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_G4_transcriptBinded.bed",
+        pG4Rev = "data/eCLIP/{prot}/Repro_{repro}_reverse_HepG2_G4_transcriptBinded.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """sort -u --parallel=4 {input.pG4Forw}>{input.pG4Forw}.tmp &&\
+        bedtools window -a {input.pG4Forw}.tmp -b {input.protForw} -w 150 | cut -f 1,2,3 |  awk ' {{ ;print; }} ' OFS=$'\t' > {output.forw}.tmp  &&\
+        sort -u --parallel=4 {output.forw}.tmp > {output.forw}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.forw}.tmp1 > {output.forw} &&\
+        sort -u --parallel=4 {input.pG4Rev}>{input.pG4Rev}.tmp &&\
+        bedtools window -a {input.pG4Rev}.tmp -b {input.protRev} -w 150 | cut -f 1,2,3 |  awk ' {{ ;print; }} ' OFS=$'\t' > {output.rev}.tmp  &&\
+        sort -u --parallel=4 {output.rev}.tmp > {output.rev}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.rev}.tmp1 > {output.rev} &&\
+        rm {output.rev}.tmp1 {output.rev}.tmp {output.forw}.tmp1 {output.forw}.tmp"""
+
+rule getBindingSiteonG4:
+    output:
+        forw = "data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_BS_bindingG4.bed",
+        rev = "data/eCLIP/{prot}/Repro_{repro}_reverse_HepG2_BS_bindingG4.bed"
+    input:
+        protForw = "data/eCLIP/{prot}/forward_HepG2.sorted.bed",
+        protRev = "data/eCLIP/{prot}/reverse_HepG2.sorted.bed",
+        pG4Forw = "data/eCLIP/{prot}/Repro_{repro}_forward_HepG2_G4_transcriptBinded.bed",
+        pG4Rev = "data/eCLIP/{prot}/Repro_{repro}_reverse_HepG2_G4_transcriptBinded.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """sort -u --parallel=4 {input.pG4Forw}>{input.pG4Forw}.tmp &&\
+        bedtools window -a {input.protForw} -b {input.pG4Forw}.tmp -sm -w 150 | cut -f 1,2,3,4,5,6 > {output.forw}.tmp  &&\
+        sort -u --parallel=4 {output.forw}.tmp > {output.forw}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.forw}.tmp1 > {output.forw} &&\
+        sort -u --parallel=4 {input.pG4Rev}>{input.pG4Rev}.tmp &&\
+        bedtools window -a {input.protRev} -b {input.pG4Rev}.tmp -sm -w 150 | cut -f 1,2,3,4,5,6 > {output.rev}.tmp  &&\
+        sort -u --parallel=4 {output.rev}.tmp > {output.rev}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output.rev}.tmp1 > {output.rev} &&\
+        rm {output.rev}.tmp1 {output.rev}.tmp {output.forw}.tmp1 {output.forw}.tmp"""

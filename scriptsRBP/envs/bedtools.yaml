@@ -1,0 +1,6 @@
+channels:
+  - default
+  - bioconda
+  - conda-forge
+dependencies:
+  - bedtools=2.* # tu peux choisir la version que tu veux

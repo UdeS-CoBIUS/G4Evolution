@@ -1,0 +1,69 @@
+configfile: "config.json"
+
+rule all:
+    input:
+        expand("data/POSTARTexcludedHuman/Repro_{repro}_{sp}_BS_bindingG4.bed", sp = config["Species"], repro = config["Repro"])
+
+rule sortBed:
+    output:
+        "data/POSTARTexcludedHuman/{sp}.sorted.bed"
+    input:
+        "data/POSTARTexcludedHuman/{sp}.bed"
+    shell:
+        "sort -u --parallel=4 {input}> {input}.tmp &&\
+        sort -k1,1 -k2,2n --parallel=4 {input}.tmp > {output}"
+
+rule getBindedTranscripts:
+    output:
+        "data/POSTARTexcludedHuman/{sp}_transcriptBinded.bed"
+    input:
+        "data/POSTARTexcludedHuman/{sp}.sorted.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """awk '{{print $1"\t"$2"\t"$3"\t"$6"\t.\t"$5}}' {input} > {input}.tmp &&\
+        bedtools window -a tmp_{wildcards.sp}.gtf.bed -b {input}.tmp -sm -w 0 | cut -f 1,2,3,5,12,6 | awk ' {{ t = $5; $5 = $6; $6 = t; print; }} ' OFS=$'\t' > {output}.tmp &&\
+        sort -u --parallel=4 {output}.tmp > {output}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output}.tmp1 > {output}"""
+
+rule getG4OnBindedTranscripts:
+    output:
+        "data/POSTARTexcludedHuman/Repro_{repro}_{sp}_G4_transcriptBinded.bed"
+    input:
+        tr = "data/POSTARTexcludedHuman/{sp}_transcriptBinded.bed",
+        pG4 = "data/Random/{sp}_pG4coord_{repro}.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """sort -u --parallel=4 {input.pG4}>{input.pG4}.tmp &&\
+        bedtools window -a {input.pG4}.tmp -b {input.tr} -sm -w 0 | cut -f 1,2,3,4,11,6 | awk ' {{ t = $5; $5 = $6; $6 = t; print; }} ' OFS=$'\t' > {output}.tmp  &&\
+        sort -u --parallel=4 {output}.tmp > {output}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output}.tmp1 > {output}"""
+
+rule getG4BindedByRBP:
+    output:
+        "data/POSTARTexcludedHuman/Repro_{repro}_{sp}_G4_binded.bed"
+    input:
+        RBP = "data/POSTARTexcludedHuman/{sp}.sorted.bed",
+        pG4 = "data/POSTARTexcludedHuman/Repro_{repro}_{sp}_G4_transcriptBinded.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """sort -u --parallel=4 {input.pG4}>{input.pG4}.tmp &&\
+        bedtools window -a {input.pG4}.tmp -b {input.RBP}.tmp -sm -w 150 | cut -f 1,2,3,10,5,6 |  awk ' {{ t = $5; $5 = $6; $6 = t; print; }} ' OFS=$'\t' > {output}.tmp  &&\
+        sort -u --parallel=4 {output}.tmp > {output}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output}.tmp1 > {output}"""
+
+rule getBindingSiteonG4:
+    output:
+        "data/POSTARTexcludedHuman/Repro_{repro}_{sp}_BS_bindingG4.bed"
+    input:
+        RBP = "data/POSTARTexcludedHuman/{sp}.sorted.bed",
+        pG4 = "data/POSTARTexcludedHuman/Repro_{repro}_{sp}_G4_transcriptBinded.bed"
+    conda:
+        "envs/bedtools.yaml"
+    shell:
+        """sort -u --parallel=4 {input.pG4}>{input.pG4}.tmp &&\
+        bedtools window -a {input.RBP}.tmp -b {input.pG4}.tmp -sm -w 150 | cut -f 1,2,3,4,5,6 > {output}.tmp  &&\
+        sort -u --parallel=4 {output}.tmp > {output}.tmp1 &&\
+        sort -k1,1 -k2,2n --parallel=4 {output}.tmp1 > {output}"""
